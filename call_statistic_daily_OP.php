@@ -1,7 +1,7 @@
 <?php
 /**
  * Скрипт-демон для ежедневного сбора статистики звонков и отправки в чат Bitrix24.
- * Запускается бесконечно и каждый будний день в 11:00 по МСК выполняет основную логику.
+ * Запускается бесконечно и каждый будний день в 12:00 по МСК выполняет основную логику.
  */
 
 // Устанавливаем временную зону МСК
@@ -134,100 +134,84 @@ function filterCalls(array $rawCalls, array $managerMap, Logger $logger): array 
 
 // Вычисление статистики
 function computeStatistics(array $calls, Logger $logger): array {
-    $totalCalls = 0;
-    $totalIncoming = 0;
-    $totalMissed = 0;
-    $uniqueNumbers = [];
-    $globalSuccess = [];
-    $assignedMissed = [];
-    $emps = [];
+    $stats = [
+        'totalCalls'     => 0,
+        'totalIncoming'  => 0,
+        'totalOutgoing'  => 0,
+        'missedIncoming' => 0,
+        'missedOutgoing' => 0,
+        'employees'      => [],
+    ];
 
     foreach ($calls as $call) {
-        $phone = $call['PHONE_NUMBER'];
-        $code  = $call['CALL_FAILED_CODE'];
-        $type  = $call['CALL_TYPE'];
-        $name  = $call['USER_NAME'];
+        $name = $call['USER_NAME'];
+        $type = $call['CALL_TYPE']; // 'INCOMING' | 'OUTGOING'
+        $code = (string)($call['CALL_FAILED_CODE'] ?? '');
 
-        $emps[$name]['total_calls'] ??= 0;
-        $emps[$name]['incoming']    ??= 0;
-        $emps[$name]['missed']      ??= 0;
-        $emps[$name]['_set']        ??= [];
-
-        $totalCalls++;
-        if ($type === 'INCOMING') {
-            $totalIncoming++;
-            if ($code === '304') $totalMissed++;
+        if (!isset($stats['employees'][$name])) {
+            $stats['employees'][$name] = [
+                'total_calls'      => 0,
+                'incoming'         => 0,
+                'outgoing'         => 0,
+                'missed_incoming'  => 0,
+                'missed_outgoing'  => 0,
+            ];
         }
-        $uniqueNumbers[$phone] = true;
 
-        $emps[$name]['total_calls']++;
+        $stats['totalCalls']++;
+        $stats['employees'][$name]['total_calls']++;
+
         if ($type === 'INCOMING') {
-            $emps[$name]['incoming']++;
+            $stats['totalIncoming']++;
+            $stats['employees'][$name]['incoming']++;
+
             if ($code === '304') {
-                $emps[$name]['missed']++;
-                if (!isset($assignedMissed[$phone]) && !isset($globalSuccess[$phone])) {
-                    $assignedMissed[$phone] = $name;
-                }
+                $stats['missedIncoming']++;
+                $stats['employees'][$name]['missed_incoming']++;
+            }
+        } else { // OUTGOING
+            $stats['totalOutgoing']++;
+            $stats['employees'][$name]['outgoing']++;
+
+            // считаем пропущенным исходящий, если код задан и не равен 200
+            if ($code !== '' && $code !== '200') {
+                $stats['missedOutgoing']++;
+                $stats['employees'][$name]['missed_outgoing']++;
             }
         }
-        $emps[$name]['_set'][$phone] = true;
-
-        if ($code === '200') {
-            $globalSuccess[$phone] = true;
-            unset($assignedMissed[$phone]);
-        }
     }
 
-    $overallUnique = count($uniqueNumbers);
-    $overallUnanswered = array_keys($assignedMissed);
-
-    foreach ($emps as $n => &$s) {
-        $s['unique_numbers'] = count($s['_set']);
-        $uns = [];
-        foreach ($assignedMissed as $ph => $to) {
-            if ($to === $n) $uns[] = $ph;
-        }
-        $s['unanswered_count'] = count($uns);
-        $s['unanswered_numbers'] = $uns;
-        unset($s['_set']);
-    }
-    unset($s);
-
-    $logger->log('INCOMING', 'Статистика вычислена для ' . count($emps) . ' сотрудников');
-    return [
-        'totalCalls'               => $totalCalls,
-        'totalIncoming'            => $totalIncoming,
-        'totalMissed'              => $totalMissed,
-        'overallUniqueCount'       => $overallUnique,
-        'overallUnansweredCount'   => count($overallUnanswered),
-        'employees'                => $emps,
-    ];
+    $logger->log('INCOMING', 'Простая статистика вычислена для ' . count($stats['employees']) . ' сотрудников');
+    return $stats;
 }
 
 // Формирование сообщения
 function buildMessage(array $stats, DateTime $fromLocal): string {
     $date = $fromLocal->format('Y-m-d');
+
     $lines = [
         "Статистика звонков за {$date}",
         "Всего звонков: {$stats['totalCalls']}",
         "Входящих: {$stats['totalIncoming']}",
-        "Пропущенных: {$stats['totalMissed']}",
-        "Уникальных номеров: {$stats['overallUniqueCount']}",
-        "Неотвеченных: {$stats['overallUnansweredCount']}",
+        "Исходящих: {$stats['totalOutgoing']}",
+        "Пропущенных входящих: {$stats['missedIncoming']}",
+        "Пропущенных исходящих: {$stats['missedOutgoing']}",
         "",
-        "По менеджерам:"
+        "По менеджерам:",
     ];
+
     foreach ($stats['employees'] as $name => $st) {
-        $unans = $st['unanswered_numbers'] ? implode(', ', $st['unanswered_numbers']) : '—';
         $lines[] = " {$name}";
-        $lines[] = "— Всего звонков: {$st['total_calls']}";
+        $lines[] = "— Всего: {$st['total_calls']}";
         $lines[] = "— Входящих: {$st['incoming']}";
-        $lines[] = "— Пропущенных: {$st['missed']}";
-        $lines[] = "— Уникальных номеров: {$st['unique_numbers']}";
-        $lines[] = "— Неотвеченные: {$unans}";
+        $lines[] = "— Исходящих: {$st['outgoing']}";
+        $lines[] = "— Пропущенных входящих: {$st['missed_incoming']}";
+        $lines[] = "— Пропущенных исходящих: {$st['missed_outgoing']}";
     }
+
     return implode("\n", $lines);
 }
+
 
 // Отправка сообщения в чат
 function sendMessage(string $message, int $dialogId, Logger $logger): void {
