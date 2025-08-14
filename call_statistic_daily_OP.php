@@ -84,15 +84,13 @@ function fetchRawCalls(string $fromDate, string $toDate, Logger $logger): array 
 // Получение списка активных менеджеров
 function fetchManagers(Logger $logger): array {
     $filter = [
-        '=WORK_POSITION' => ['Менеджер по сопровождению', 'Руководитель отдела по сопровождению', 'Хантер (ОС)'],
         'ACTIVE'         => 'Y',
+        '%WORK_POSITION' => 'хантер',
+        'UF_DEPARTMENT'  => [47],
     ];
-    $params = [
-        'method' => 'user.search',
-        'params' => ['FILTER' => $filter, 'SELECT' => ['ID','NAME','LAST_NAME']],
-    ];
-    $logger->log('OUTGOING', 'user.search для получения менеджеров');
-    $resp = CRest::call($params['method'], $params['params']);
+    $params = ['FILTER' => $filter, 'SELECT' => ['ID','NAME','LAST_NAME']];
+    $logger->log('OUTGOING', 'user.get для получения менеджеров');
+    $resp = CRest::call('user.get', $params);
     if (isset($resp['error'])) {
         $logger->log('OUTGOING', 'Ошибка при получении менеджеров: ' . $resp['error_description']);
         throw new RuntimeException('Error fetching managers: ' . $resp['error_description']);
