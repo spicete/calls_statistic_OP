@@ -60,7 +60,7 @@ function fetchRawCalls(string $fromDate, string $toDate, Logger $logger): array 
             'FILTER' => [
                 '>CALL_START_DATE' => $fromDate,
                 '<CALL_START_DATE' => $toDate,
-                'PORTAL_NUMBER'    => ['74112243068', 'reg114162'],
+                'PORTAL_NUMBER'    => ['74112243067', 'reg114284', 73832349859, 79014699873],
             ],
             'SORT'  => ['CALL_START_DATE' => 'DESC'],
             'start' => $start,
