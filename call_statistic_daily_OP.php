@@ -1,7 +1,7 @@
 <?php
 /**
  * Скрипт-демон для ежедневного сбора статистики звонков и отправки в чат Bitrix24.
- * Запускается бесконечно и каждый будний день в 12:00 по МСК выполняет основную логику.
+ * Запускается как демон и выполняет основную логику каждый день в 13:00 и 17:30 по МСК.
  */
 
 // Устанавливаем временную зону МСК
@@ -244,22 +244,28 @@ function runOnce(array $dialogIds, Logger $logger): void {
     }
 }
 
-// Вычисление следующего времени запуска (будний день в 12:00)
+// Вычисление следующего времени запуска (ежедневно в 13:00 и 17:30)
 function getNextRun(): DateTime {
-    $dt = new DateTime('now', new DateTimeZone('Europe/Moscow'));
-    $candidate = new DateTime('today 12:00', new DateTimeZone('Europe/Moscow'));
-    if ($dt >= $candidate || (int)$dt->format('N') >= 6) {
-        do {
-            $candidate->modify('+1 day');
-        } while ((int)$candidate->format('N') >= 6);
+    $tz  = new DateTimeZone('Europe/Moscow');
+    $now = new DateTime('now', $tz);
+    $first  = new DateTime('today 13:00', $tz);
+    $second = new DateTime('today 17:30', $tz);
+
+    if ($now < $first) {
+        return $first;
     }
-    return $candidate;
+    if ($now < $second) {
+        return $second;
+    }
+
+    $first->modify('+1 day');
+    return $first;
 }
 
 // === Точка входа ===
 $logger = new Logger(__DIR__ . '/logs');
-// Замените на реальные DIALOG_ID чатов
-$dialogIds = [199421];
+// ID чатов для отправки отчёта
+$dialogIds = [80997];
 
 $logger->log('OUTGOING', 'Демон запущен, ожидаем первого запуска для ' . implode(', ', $dialogIds));
 while (true) {
