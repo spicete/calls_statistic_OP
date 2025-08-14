@@ -1,7 +1,7 @@
 <?php
 /**
  * Скрипт-демон для ежедневного сбора статистики звонков и отправки в чат Bitrix24.
- * Запускается как демон и выполняет основную логику каждый день в 13:00 и 17:30 по МСК.
+ * Запускается ежедневно в 07:00 и 11:30 по МСК (соответствует 13:00 и 17:30 по Якутску, UTC+9).
  */
 
 // Устанавливаем временную зону МСК
@@ -248,8 +248,8 @@ function runOnce(array $dialogIds, Logger $logger): void {
 function getNextRun(): DateTime {
     $tz  = new DateTimeZone('Europe/Moscow');
     $now = new DateTime('now', $tz);
-    $first  = new DateTime('today 13:00', $tz);
-    $second = new DateTime('today 17:30', $tz);
+    $first  = new DateTime('today 07:00', $tz);
+    $second = new DateTime('today 11:30', $tz);
 
     if ($now < $first) {
         return $first;
